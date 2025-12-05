@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -18,15 +19,19 @@ import {
   LogOut, 
   Calendar, 
   CalendarDays,
-  User,
-  Menu
+  User
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function Header() {
+  const [mounted, setMounted] = useState(false)
   const { user, signOut } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleSignOut = async () => {
     await signOut()
@@ -108,7 +113,9 @@ export function Header() {
             <DropdownMenuContent align="end" className="w-56">
               <div className="px-3 py-2">
                 <p className="text-sm font-medium text-slate-900">アカウント</p>
-                <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                <p className="text-xs text-slate-500 truncate">
+                  {mounted ? user?.email : ''}
+                </p>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
