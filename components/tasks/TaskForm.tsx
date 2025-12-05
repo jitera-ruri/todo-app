@@ -80,14 +80,14 @@ export function TaskForm({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px] rounded-2xl p-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-6 pb-4 bg-gradient-to-br from-slate-50 to-slate-100 border-b">
-          <DialogTitle className="text-xl">
+      <DialogContent className="sm:max-w-[480px] rounded-2xl p-0 overflow-hidden bg-white">
+        <DialogHeader className="px-6 pt-6 pb-4 bg-slate-50 border-b border-slate-200">
+          <DialogTitle className="text-xl text-slate-900">
             {initialData ? 'タスクを編集' : '新しいタスク'}
           </DialogTitle>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 bg-white">
           {/* Title */}
           <div className="space-y-2">
             <Label htmlFor="title" className="text-slate-700">
@@ -99,7 +99,7 @@ export function TaskForm({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="例: レポートを提出する"
               required
-              className="h-12 rounded-xl"
+              className="h-12 rounded-xl bg-white border-slate-200"
             />
           </div>
 
@@ -134,10 +134,10 @@ export function TaskForm({
             <div className="space-y-2">
               <Label className="text-slate-700">カテゴリ</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger className="h-12 rounded-xl">
+                <SelectTrigger className="h-12 rounded-xl bg-white border-slate-200">
                   <SelectValue placeholder="選択..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-white">
                   <SelectItem value="none">なし</SelectItem>
                   {categories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
@@ -155,7 +155,7 @@ export function TaskForm({
                 type="date"
                 value={taskDate}
                 onChange={(e) => setTaskDate(e.target.value)}
-                className="h-12 rounded-xl"
+                className="h-12 rounded-xl bg-white border-slate-200"
               />
             </div>
           </div>
@@ -169,7 +169,7 @@ export function TaskForm({
               onChange={(e) => setMemo(e.target.value)}
               placeholder="詳細やメモを入力（任意）"
               rows={3}
-              className="rounded-xl resize-none"
+              className="rounded-xl resize-none bg-white border-slate-200"
             />
           </div>
 
@@ -179,14 +179,14 @@ export function TaskForm({
               type="button" 
               variant="outline" 
               onClick={() => onOpenChange(false)}
-              className="flex-1 h-12 rounded-xl"
+              className="flex-1 h-12 rounded-xl bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
             >
               キャンセル
             </Button>
             <Button 
               type="submit" 
               disabled={isSubmitting || !title.trim()}
-              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600"
+              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white"
             >
               {initialData ? '更新' : '追加'}
             </Button>
