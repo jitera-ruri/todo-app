@@ -42,7 +42,7 @@ export function TaskForm({
   const [title, setTitle] = useState('')
   const [memo, setMemo] = useState('')
   const [priority, setPriority] = useState<Priority>('medium')
-  const [categoryId, setCategoryId] = useState<string>('')
+  const [categoryId, setCategoryId] = useState<string>('none')
   const [taskDate, setTaskDate] = useState(defaultDate)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -51,13 +51,13 @@ export function TaskForm({
       setTitle(initialData.title)
       setMemo(initialData.memo || '')
       setPriority(initialData.priority)
-      setCategoryId(initialData.category_id || '')
+      setCategoryId(initialData.category_id || 'none')
       setTaskDate(initialData.task_date)
     } else {
       setTitle('')
       setMemo('')
       setPriority('medium')
-      setCategoryId('')
+      setCategoryId('none')
       setTaskDate(defaultDate)
     }
   }, [initialData, defaultDate, open])
@@ -71,7 +71,7 @@ export function TaskForm({
       title: title.trim(),
       memo: memo.trim() || undefined,
       priority,
-      category_id: categoryId || undefined,
+      category_id: categoryId === 'none' ? undefined : categoryId,
       task_date: taskDate,
     })
     setIsSubmitting(false)
@@ -138,7 +138,7 @@ export function TaskForm({
                   <SelectValue placeholder="選択..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">なし</SelectItem>
+                  <SelectItem value="none">なし</SelectItem>
                   {categories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       {category.name}
