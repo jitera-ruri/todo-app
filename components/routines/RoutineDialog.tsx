@@ -34,7 +34,7 @@ export function RoutineDialog({ open, onOpenChange, routine, categories }: Routi
   const [formData, setFormData] = useState<RoutineFormData>({
     title: '',
     memo: '',
-    category_id: '',
+    category_id: undefined,
     has_time: false,
     time: '09:00',
   })
@@ -48,7 +48,7 @@ export function RoutineDialog({ open, onOpenChange, routine, categories }: Routi
       setFormData({
         title: routine.title,
         memo: routine.memo || '',
-        category_id: routine.category_id || '',
+        category_id: routine.category_id || undefined,
         has_time: routine.has_time,
         time: routine.time ? routine.time.slice(0, 5) : '09:00',
       })
@@ -56,7 +56,7 @@ export function RoutineDialog({ open, onOpenChange, routine, categories }: Routi
       setFormData({
         title: '',
         memo: '',
-        category_id: '',
+        category_id: undefined,
         has_time: false,
         time: '09:00',
       })
@@ -127,14 +127,14 @@ export function RoutineDialog({ open, onOpenChange, routine, categories }: Routi
           <div className="space-y-2">
             <Label htmlFor="category" className="text-slate-700">カテゴリ</Label>
             <Select
-              value={formData.category_id}
-              onValueChange={(value) => setFormData({ ...formData, category_id: value })}
+              value={formData.category_id || 'none'}
+              onValueChange={(value) => setFormData({ ...formData, category_id: value === 'none' ? undefined : value })}
             >
               <SelectTrigger className="bg-white border-slate-200">
                 <SelectValue placeholder="カテゴリを選択" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">なし</SelectItem>
+                <SelectItem value="none">なし</SelectItem>
                 {categories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     {category.name}

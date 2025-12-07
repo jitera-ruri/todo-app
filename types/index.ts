@@ -60,10 +60,11 @@ export interface Routine {
 export interface RoutineFormData {
   title: string
   memo?: string
-  category_id?: string
+  category_id?: string  // undefined を許可（空文字列ではなく）
   has_time: boolean
   time?: string
 }
+
 
 export const PRIORITY_CONFIG = {
   high: {
