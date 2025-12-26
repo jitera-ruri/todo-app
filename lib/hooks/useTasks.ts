@@ -1,222 +1,167 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, TaskFormData } from '@/types'
-import { formatDateISO } from '@/lib/utils'
+import { Task, CreateTaskInput, UpdateTaskInput } from '@/types'
 
-export function useTasks(date: Date) {
+// 優先度の重み付け（高→中→低の順）
+const priorityOrder: Record<string, number> = {
+  high: 1,
+  medium: 2,
+  low: 3,
+}
+
+// タスクを優先度順にソートする関数
+const sortTasksByPriority = (tasks: Task[]): Task[] => {
+  return [...tasks].sort((a, b) => {
+    const priorityA = priorityOrder[a.priority] ?? 999
+    const priorityB = priorityOrder[b.priority] ?? 999
+    const priorityDiff = priorityA - priorityB
+    if (priorityDiff !== 0) return priorityDiff
+    return a.sort_order - b.sort_order
+  })
+}
+
+export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
 
-  const fetchTasks = useCallback(async () => {
+  const fetchTasks = useCallback(async (date: string) => {
     setLoading(true)
-    const dateStr = formatDateISO(date)
-    
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*, category:categories(*)')
-      .eq('task_date', dateStr)
-      .order('sort_order', { ascending: true })
+    setError(null)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('ユーザーが見つかりません')
 
-    if (error) {
-      console.error('Error fetching tasks:', error)
-    } else {
-      setTasks(data || [])
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('date', date)
+        .order('sort_order', { ascending: true })
+
+      if (error) throw error
+      
+      // 優先度順にソート
+      const sortedTasks = sortTasksByPriority(data || [])
+      setTasks(sortedTasks)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'タスクの取得に失敗しました')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }, [date, supabase])
+  }, [supabase])
 
-  useEffect(() => {
-    fetchTasks()
-  }, [fetchTasks])
+  const createTask = useCallback(async (input: CreateTaskInput) => {
+    setError(null)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('ユーザーが見つかりません')
 
-  const addTask = async (taskData: TaskFormData) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return null
+      // 同じ優先度のタスクの最大sort_orderを取得
+      const samePriorityTasks = tasks.filter(t => t.priority === input.priority)
+      const maxSortOrder = samePriorityTasks.length > 0
+        ? Math.max(...samePriorityTasks.map(t => t.sort_order))
+        : Math.max(...tasks.map(t => t.sort_order), -1)
 
-    const maxOrder = tasks.length > 0 
-      ? Math.max(...tasks.map(t => t.sort_order)) + 1 
-      : 0
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({
+          ...input,
+          user_id: user.id,
+          sort_order: maxSortOrder + 1,
+        })
+        .select()
+        .single()
 
-    const { data, error } = await supabase
-      .from('tasks')
-      .insert({
-        ...taskData,
-        user_id: user.id,
-        sort_order: maxOrder,
-      })
-      .select('*, category:categories(*)')
-      .single()
-
-    if (error) {
-      console.error('Error adding task:', error)
-      return null
+      if (error) throw error
+      
+      // 優先度順にソートして更新
+      setTasks(prev => sortTasksByPriority([...prev, data]))
+      return data
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'タスクの作成に失敗しました')
+      throw err
     }
+  }, [supabase, tasks])
 
-    setTasks(prev => [...prev, data])
-    return data
-  }
+  const updateTask = useCallback(async (id: string, input: UpdateTaskInput) => {
+    setError(null)
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .update(input)
+        .eq('id', id)
+        .select()
+        .single()
 
-  const updateTask = async (id: string, updates: Partial<Task>) => {
-    const { data, error } = await supabase
-      .from('tasks')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select('*, category:categories(*)')
-      .single()
-
-    if (error) {
-      console.error('Error updating task:', error)
-      return null
+      if (error) throw error
+      
+      // 優先度順にソートして更新
+      setTasks(prev => sortTasksByPriority(prev.map(task => task.id === id ? data : task)))
+      return data
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'タスクの更新に失敗しました')
+      throw err
     }
+  }, [supabase])
 
-    setTasks(prev => prev.map(t => t.id === id ? data : t))
-    return data
-  }
+  const deleteTask = useCallback(async (id: string) => {
+    setError(null)
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('id', id)
 
-  const deleteTask = async (id: string) => {
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', id)
-
-    if (error) {
-      console.error('Error deleting task:', error)
-      return false
+      if (error) throw error
+      setTasks(prev => prev.filter(task => task.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'タスクの削除に失敗しました')
+      throw err
     }
+  }, [supabase])
 
-    setTasks(prev => prev.filter(t => t.id !== id))
-    return true
-  }
-
-  const toggleComplete = async (id: string) => {
+  const toggleComplete = useCallback(async (id: string) => {
     const task = tasks.find(t => t.id === id)
-    if (!task) return null
+    if (!task) return
 
     return updateTask(id, { is_completed: !task.is_completed })
-  }
+  }, [tasks, updateTask])
 
-  const moveTask = async (id: string, newDate: string) => {
-    const { data, error } = await supabase
-      .from('tasks')
-      .update({ task_date: newDate, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select('*, category:categories(*)')
-      .single()
+  const reorderTasks = useCallback(async (reorderedTasks: Task[]) => {
+    // 優先度順を維持しながらsort_orderを更新
+    const sortedByPriority = sortTasksByPriority(reorderedTasks)
+    setTasks(sortedByPriority)
 
-    if (error) {
-      console.error('Error moving task:', error)
-      return null
+    try {
+      const updates = sortedByPriority.map((task, index) => ({
+        id: task.id,
+        sort_order: index,
+      }))
+
+      for (const update of updates) {
+        await supabase
+          .from('tasks')
+          .update({ sort_order: update.sort_order })
+          .eq('id', update.id)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '並び替えに失敗しました')
     }
-
-    // Remove from current list if moved to different date
-    if (newDate !== formatDateISO(date)) {
-      setTasks(prev => prev.filter(t => t.id !== id))
-    }
-
-    return data
-  }
-
-  const reorderTasks = async (reorderedTasks: Task[]) => {
-    setTasks(reorderedTasks)
-
-    const updates = reorderedTasks.map((task, index) => ({
-      id: task.id,
-      sort_order: index,
-    }))
-
-    for (const update of updates) {
-      await supabase
-        .from('tasks')
-        .update({ sort_order: update.sort_order })
-        .eq('id', update.id)
-    }
-  }
+  }, [supabase])
 
   return {
     tasks,
     loading,
-    addTask,
+    error,
+    fetchTasks,
+    createTask,
     updateTask,
     deleteTask,
     toggleComplete,
-    moveTask,
     reorderTasks,
-    refetch: fetchTasks,
-  }
-}
-
-export function useWeekTasks(dates: Date[]) {
-  const [tasksByDate, setTasksByDate] = useState<Record<string, Task[]>>({})
-  const [loading, setLoading] = useState(true)
-  const supabase = createClient()
-
-  const fetchWeekTasks = useCallback(async () => {
-    setLoading(true)
-    const dateStrings = dates.map(d => formatDateISO(d))
-    
-    const { data, error } = await supabase
-      .from('tasks')
-      .select('*, category:categories(*)')
-      .in('task_date', dateStrings)
-      .order('sort_order', { ascending: true })
-
-    if (error) {
-      console.error('Error fetching week tasks:', error)
-    } else {
-      const grouped: Record<string, Task[]> = {}
-      dateStrings.forEach(d => { grouped[d] = [] })
-      
-      data?.forEach(task => {
-        if (grouped[task.task_date]) {
-          grouped[task.task_date].push(task)
-        }
-      })
-      
-      setTasksByDate(grouped)
-    }
-    setLoading(false)
-  }, [dates, supabase])
-
-  useEffect(() => {
-    if (dates.length > 0) {
-      fetchWeekTasks()
-    }
-  }, [fetchWeekTasks, dates])
-
-  const updateTaskInWeek = (task: Task) => {
-    setTasksByDate(prev => {
-      const newState = { ...prev }
-      // Remove from old date
-      Object.keys(newState).forEach(date => {
-        newState[date] = newState[date].filter(t => t.id !== task.id)
-      })
-      // Add to new date
-      if (newState[task.task_date]) {
-        newState[task.task_date] = [...newState[task.task_date], task]
-          .sort((a, b) => a.sort_order - b.sort_order)
-      }
-      return newState
-    })
-  }
-
-  const removeTaskFromWeek = (taskId: string) => {
-    setTasksByDate(prev => {
-      const newState = { ...prev }
-      Object.keys(newState).forEach(date => {
-        newState[date] = newState[date].filter(t => t.id !== taskId)
-      })
-      return newState
-    })
-  }
-
-  return {
-    tasksByDate,
-    loading,
-    refetch: fetchWeekTasks,
-    updateTaskInWeek,
-    removeTaskFromWeek,
   }
 }

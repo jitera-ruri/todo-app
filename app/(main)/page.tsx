@@ -1,384 +1,204 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { addDays } from 'date-fns'
-import { Plus, ChevronLeft, ChevronRight, Sparkles, CheckSquare, Repeat } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { format, addDays, subDays } from 'date-fns'
+import { ja } from 'date-fns/locale'
+import { ChevronLeft, ChevronRight, Plus, Calendar } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TaskList } from '@/components/tasks/TaskList'
 import { TaskForm } from '@/components/tasks/TaskForm'
 import { useTasks } from '@/lib/hooks/useTasks'
-import { useCategories } from '@/lib/hooks/useCategories'
-import { formatDate, formatDateISO, isTodayDate } from '@/lib/utils'
-import { useToast } from '@/components/ui/use-toast'
-import type { Task, TaskFormData } from '@/types'
+import { useRoutines } from '@/lib/hooks/useRoutines'
 import { createClient } from '@/lib/supabase/client'
+import { Task } from '@/types'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Calendar as CalendarComponent } from '@/components/ui/calendar'
 
-export default function TodayPage() {
-  const [currentDate, setCurrentDate] = useState(new Date())
+export default function HomePage() {
+  const [selectedDate, setSelectedDate] = useState(new Date())
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
-  const [mounted, setMounted] = useState(false)
-  const [generatingRoutines, setGeneratingRoutines] = useState(false)
-  
-  const {
-    tasks,
-    loading,
-    addTask,
-    updateTask,
-    deleteTask,
-    toggleComplete,
-    moveTask,
-    reorderTasks,
-    refetch,
-  } = useTasks(currentDate)
-  
-  const { categories } = useCategories()
-  const { toast } = useToast()
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  const { tasks, loading, fetchTasks, createTask, updateTask, deleteTask, toggleComplete, reorderTasks } = useTasks()
+  const { generateRoutineTasks } = useRoutines()
   const supabase = createClient()
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const dateString = format(selectedDate, 'yyyy-MM-dd')
+  const isToday = dateString === format(new Date(), 'yyyy-MM-dd')
 
-  // 未完了タスクの自動引き継ぎ
-  useEffect(() => {
-    const carryOverTasks = async () => {
-      const today = formatDateISO(new Date())
+  // 過去の未完了タスクを今日に繰り越す（ルーティンタスクは除外）
+  const carryOverTasks = useCallback(async () => {
+    const today = format(new Date(), 'yyyy-MM-dd')
+    
+    try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
-      await supabase
+      // 過去の未完了タスクを取得（ルーティンタスクは除外）
+      const { data: incompleteTasks, error } = await supabase
         .from('tasks')
-        .update({ task_date: today, updated_at: new Date().toISOString() })
+        .select('*')
         .eq('user_id', user.id)
         .eq('is_completed', false)
-        .lt('task_date', today)
-      
-      refetch()
-    }
+        .lt('date', today)
+        .is('routine_id', null)  // ルーティンタスクを除外
 
-    if (mounted) {
-      carryOverTasks()
-    }
-  }, [supabase, refetch, mounted])
+      if (error) throw error
 
-  // 今日のページを開いたときに自動的にルーティンタスクを生成
+      if (incompleteTasks && incompleteTasks.length > 0) {
+        // 今日の日付に更新
+        for (const task of incompleteTasks) {
+          await supabase
+            .from('tasks')
+            .update({ date: today })
+            .eq('id', task.id)
+        }
+      }
+    } catch (err) {
+      console.error('タスクの繰り越しに失敗しました:', err)
+    }
+  }, [supabase])
+
+  // 初回ロード時に繰り越し処理とルーティンタスク生成を実行
   useEffect(() => {
-    const generateRoutineTasksOnLoad = async () => {
-      if (!mounted || !isTodayDate(currentDate)) return
-      
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      // 今日のルーティンタスクが既に存在するかチェック
-      const { data: existingTasks } = await supabase
-        .from('tasks')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('task_date', formatDateISO(currentDate))
-        .not('routine_id', 'is', null)
-        .limit(1)
-
-      // 既に存在する場合は生成しない
-      if (existingTasks && existingTasks.length > 0) return
-
-      // ルーティンタスクを生成
-      await generateRoutineTasks()
+    const initialize = async () => {
+      await carryOverTasks()
+      await generateRoutineTasks(dateString)
+      fetchTasks(dateString)
     }
+    initialize()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-    generateRoutineTasksOnLoad()
-  }, [mounted, currentDate])
+  // 日付変更時にタスクを再取得
+  useEffect(() => {
+    const loadTasks = async () => {
+      await generateRoutineTasks(dateString)
+      fetchTasks(dateString)
+    }
+    loadTasks()
+  }, [dateString, fetchTasks, generateRoutineTasks])
 
-  const handlePrevDay = () => setCurrentDate(prev => addDays(prev, -1))
-  const handleNextDay = () => setCurrentDate(prev => addDays(prev, 1))
-  const handleToday = () => setCurrentDate(new Date())
-
-  const handleAddTask = async (data: TaskFormData) => {
-    await addTask(data)
-    refetch()
+  const handlePrevDay = () => {
+    setSelectedDate(prev => subDays(prev, 1))
   }
 
-  const handleUpdateTask = async (data: TaskFormData) => {
+  const handleNextDay = () => {
+    setSelectedDate(prev => addDays(prev, 1))
+  }
+
+  const handleToday = () => {
+    setSelectedDate(new Date())
+  }
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      setSelectedDate(date)
+      setIsCalendarOpen(false)
+    }
+  }
+
+  const handleCreateTask = async (data: Omit<Task, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sort_order'>) => {
+    await createTask({ ...data, date: dateString })
+    setIsFormOpen(false)
+  }
+
+  const handleUpdateTask = async (data: Omit<Task, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sort_order'>) => {
     if (editingTask) {
       await updateTask(editingTask.id, data)
       setEditingTask(null)
-      refetch()
     }
   }
 
-  const handleEdit = (task: Task) => {
+  const handleEditTask = (task: Task) => {
     setEditingTask(task)
-    setIsFormOpen(true)
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDeleteTask = async (id: string) => {
     await deleteTask(id)
-    refetch()
   }
 
   const handleToggleComplete = async (id: string) => {
     await toggleComplete(id)
-    refetch()
   }
 
-  const handleMoveToTomorrow = async (id: string) => {
-    const tomorrow = formatDateISO(addDays(currentDate, 1))
-    await moveTask(id, tomorrow)
-    refetch()
+  const handleReorderTasks = async (reorderedTasks: Task[]) => {
+    await reorderTasks(reorderedTasks)
   }
-
-  const handleFormClose = (open: boolean) => {
-    setIsFormOpen(open)
-    if (!open) setEditingTask(null)
-  }
-
-  const generateRoutineTasks = async () => {
-    setGeneratingRoutines(true)
-    
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      setGeneratingRoutines(false)
-      return
-    }
-
-    try {
-      // アクティブなルーティンを取得
-      const { data: routines, error: routinesError } = await supabase
-        .from('routines')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_active', true)
-
-      if (routinesError) throw routinesError
-
-      if (!routines || routines.length === 0) {
-        toast({
-          title: 'ルーティンがありません',
-          description: '設定画面からルーティンを追加してください。',
-        })
-        setGeneratingRoutines(false)
-        return
-      }
-
-      const targetDate = formatDateISO(currentDate)
-
-      // 既に今日のルーティンタスクが存在するかチェック
-      const { data: existingTasks } = await supabase
-        .from('tasks')
-        .select('routine_id')
-        .eq('user_id', user.id)
-        .eq('task_date', targetDate)
-        .not('routine_id', 'is', null)
-
-      const existingRoutineIds = new Set(existingTasks?.map(t => t.routine_id) || [])
-
-      // まだ生成されていないルーティンのタスクを作成
-      const tasksToCreate = routines
-        .filter(routine => !existingRoutineIds.has(routine.id))
-        .map(routine => ({
-          user_id: user.id,
-          category_id: routine.category_id,
-          title: routine.title,
-          memo: routine.memo,
-          priority: 'medium' as const,
-          task_date: targetDate,
-          routine_id: routine.id,
-          is_completed: false,
-        }))
-
-      if (tasksToCreate.length === 0) {
-        toast({
-          title: '既に生成済みです',
-          description: '本日のルーティンタスクは既に生成されています。',
-        })
-        setGeneratingRoutines(false)
-        return
-      }
-
-      const { error: insertError } = await supabase
-        .from('tasks')
-        .insert(tasksToCreate)
-
-      if (insertError) throw insertError
-
-      toast({
-        title: '生成完了',
-        description: `${tasksToCreate.length}件のルーティンタスクを生成しました。`,
-      })
-
-      refetch()
-    } catch (error) {
-      console.error('Error generating routine tasks:', error)
-      toast({
-        title: 'エラー',
-        description: 'ルーティンタスクの生成に失敗しました。',
-        variant: 'destructive',
-      })
-    }
-
-    setGeneratingRoutines(false)
-  }
-
-  if (!mounted) {
-    return null
-  }
-
-  const isToday = isTodayDate(currentDate)
-  const completedCount = tasks.filter(t => t.is_completed).length
-  const totalCount = tasks.length
-  const hasRoutineTasks = tasks.some(t => t.routine_id)
 
   return (
-    <div className="max-w-2xl mx-auto">
-      {/* Date Card */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
-        <div className="flex items-center justify-between">
-          {/* Date Navigation */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handlePrevDay}
-              className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
-            >
-              <ChevronLeft className="h-5 w-5 text-slate-600" />
-            </button>
-            <button
-              onClick={handleNextDay}
-              className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
-            >
-              <ChevronRight className="h-5 w-5 text-slate-600" />
-            </button>
-            {!isToday && (
-              <button
-                onClick={handleToday}
-                className="px-4 h-10 rounded-xl bg-blue-50 text-blue-600 text-sm font-medium hover:bg-blue-100 transition-colors"
-              >
-                今日
-              </button>
-            )}
-          </div>
-
-          {/* Date Display */}
-          <div className="text-center">
-            {isToday && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white text-xs font-medium rounded-full mb-2">
-                <Sparkles className="h-3 w-3" />
-                TODAY
-              </span>
-            )}
-            <h1 className="text-xl font-bold text-slate-900">
-              {formatDate(currentDate)}
-            </h1>
-          </div>
-
-          {/* Add Button */}
-          <Button 
-            onClick={() => setIsFormOpen(true)}
-            className="h-10 px-4 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white shadow-lg shadow-blue-500/25"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            追加
-          </Button>
-        </div>
-
-        {/* Progress */}
-        {totalCount > 0 && (
-          <div className="mt-6">
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-slate-600">進捗</span>
-              <span className="font-medium text-slate-900">
-                {completedCount} / {totalCount} 完了
-              </span>
-            </div>
-            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500"
-                style={{ width: `${(completedCount / totalCount) * 100}%` }}
+    <div className="container mx-auto px-4 py-6 max-w-2xl">
+      {/* 日付ナビゲーション */}
+      <div className="flex items-center justify-between mb-6">
+        <Button variant="outline" size="icon" onClick={handlePrevDay}>
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        
+        <div className="flex items-center gap-2">
+          <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" className="text-lg font-semibold">
+                {format(selectedDate, 'M月d日(E)', { locale: ja })}
+                <Calendar className="ml-2 h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="center">
+              <CalendarComponent
+                mode="single"
+                selected={selectedDate}
+                onSelect={handleDateSelect}
+                initialFocus
               />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Generate Routine Tasks Button */}
-      {!hasRoutineTasks && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-4 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                <Repeat className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-900">ルーティンタスク</h3>
-                <p className="text-sm text-slate-600">毎日のルーティンをタスクに追加</p>
-              </div>
-            </div>
-            <Button
-              onClick={generateRoutineTasks}
-              disabled={generatingRoutines}
-              className="bg-blue-500 hover:bg-blue-600 text-white"
-            >
-              {generatingRoutines ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                  生成中...
-                </>
-              ) : (
-                <>
-                  <Repeat className="h-4 w-4 mr-2" />
-                  生成
-                </>
-              )}
+            </PopoverContent>
+          </Popover>
+          
+          {!isToday && (
+            <Button variant="outline" size="sm" onClick={handleToday}>
+              今日
             </Button>
-          </div>
+          )}
         </div>
-      )}
 
-      {/* Task List */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
-          </div>
-        ) : tasks.length === 0 ? (
-          <div className="text-center py-16 px-4">
-            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <CheckSquare className="h-8 w-8 text-slate-400" />
-            </div>
-            <h3 className="text-lg font-medium text-slate-900 mb-1">
-              タスクがありません
-            </h3>
-            <p className="text-slate-500 mb-6">
-              「追加」ボタンから新しいタスクを作成しましょう
-            </p>
-            <Button 
-              onClick={() => setIsFormOpen(true)}
-              variant="outline"
-              className="rounded-xl bg-white border-slate-200"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              タスクを追加
-            </Button>
-          </div>
-        ) : (
-          <TaskList
-            tasks={tasks}
-            onToggleComplete={handleToggleComplete}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onMoveToTomorrow={handleMoveToTomorrow}
-            onReorder={reorderTasks}
-          />
-        )}
+        <Button variant="outline" size="icon" onClick={handleNextDay}>
+          <ChevronRight className="h-4 w-4" />
+        </Button>
       </div>
 
-      {/* Task Form Dialog */}
+      {/* タスク一覧 */}
+      <TaskList
+        tasks={tasks}
+        loading={loading}
+        onToggleComplete={handleToggleComplete}
+        onEdit={handleEditTask}
+        onDelete={handleDeleteTask}
+        onReorder={handleReorderTasks}
+      />
+
+      {/* タスク追加ボタン */}
+      <Button
+        className="fixed bottom-6 right-6 rounded-full w-14 h-14 shadow-lg"
+        onClick={() => setIsFormOpen(true)}
+      >
+        <Plus className="h-6 w-6" />
+      </Button>
+
+      {/* タスク作成フォーム */}
       <TaskForm
         open={isFormOpen}
-        onOpenChange={handleFormClose}
-        onSubmit={editingTask ? handleUpdateTask : handleAddTask}
-        categories={categories}
-        initialData={editingTask}
-        defaultDate={formatDateISO(currentDate)}
+        onOpenChange={setIsFormOpen}
+        onSubmit={handleCreateTask}
+      />
+
+      {/* タスク編集フォーム */}
+      <TaskForm
+        open={!!editingTask}
+        onOpenChange={(open) => !open && setEditingTask(null)}
+        onSubmit={handleUpdateTask}
+        defaultValues={editingTask || undefined}
+        isEditing
       />
     </div>
   )
