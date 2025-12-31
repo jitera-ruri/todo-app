@@ -18,7 +18,7 @@ export default function HomePage() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   
-  const { tasks, loading, fetchTasks, createTask, updateTask, deleteTask, toggleComplete, reorderTasks } = useTasks()
+  const { tasks, loading, fetchTasks, createTask, updateTask, deleteTask, toggleComplete } = useTasks()
   const { categories } = useCategories()
   const { generateRoutineTasks } = useRoutines()
   const supabase = createClient()
@@ -129,10 +129,6 @@ export default function HomePage() {
     await updateTask(id, { task_date: tomorrow })
   }
 
-  const handleReorderTasks = async (reorderedTasks: Task[]) => {
-    await reorderTasks(reorderedTasks)
-  }
-
   return (
     <div className="container mx-auto px-4 py-6 max-w-2xl">
       {/* 日付ナビゲーション */}
@@ -157,16 +153,19 @@ export default function HomePage() {
         </Button>
       </div>
 
-      {/* タスク一覧 */}
-      <TaskList
-        tasks={tasks}
-        loading={loading}
-        onToggleComplete={handleToggleComplete}
-        onEdit={handleEditTask}
-        onDelete={handleDeleteTask}
-        onMoveToTomorrow={handleMoveToTomorrow}
-        onReorder={handleReorderTasks}
-      />
+      {/* ローディング表示 */}
+      {loading ? (
+        <div className="text-center py-12 text-gray-500">読み込み中...</div>
+      ) : (
+        /* タスク一覧 */
+        <TaskList
+          tasks={tasks}
+          onToggleComplete={handleToggleComplete}
+          onEdit={handleEditTask}
+          onDelete={handleDeleteTask}
+          onMoveToTomorrow={handleMoveToTomorrow}
+        />
+      )}
 
       {/* タスク追加ボタン */}
       <Button
