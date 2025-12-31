@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { TaskList } from '@/components/tasks/TaskList'
 import { TaskForm } from '@/components/tasks/TaskForm'
 import { useTasks } from '@/lib/hooks/useTasks'
+import { useCategories } from '@/lib/hooks/useCategories'
 import { useRoutines } from '@/lib/hooks/useRoutines'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, TaskFormData } from '@/types'
@@ -18,6 +19,7 @@ export default function HomePage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   
   const { tasks, loading, fetchTasks, createTask, updateTask, deleteTask, toggleComplete } = useTasks()
+  const { categories } = useCategories()
   const { generateRoutineTasks } = useRoutines()
   const supabase = createClient()
 
@@ -32,6 +34,7 @@ export default function HomePage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // 過去の未完了タスクを取得（ルーティンタスクは除外）
       const { data: incompleteTasks, error } = await supabase
         .from('tasks')
         .select('*')
@@ -125,10 +128,9 @@ export default function HomePage() {
     await updateTask(id, { task_date: tomorrow })
   }
 
-  // onReorder: 優先度順ソートを維持するため、並び替えは無効化（空の関数）
-  const handleReorder = async (_reorderedTasks: Task[]) => {
-    // 優先度順ソートを維持するため、手動並び替えは無効
-    // 必要に応じてここでソート順を更新
+  const handleReorderTasks = async (reorderedTasks: Task[]) => {
+    // 優先度順ソートを維持するため、特に処理は不要
+    // 必要に応じてここでDB更新を行う
   }
 
   return (
@@ -165,7 +167,7 @@ export default function HomePage() {
           onEdit={handleEditTask}
           onDelete={handleDeleteTask}
           onMoveToTomorrow={handleMoveToTomorrow}
-          onReorder={handleReorder}
+          onReorder={handleReorderTasks}
         />
       )}
 
@@ -182,6 +184,8 @@ export default function HomePage() {
         open={isFormOpen}
         onOpenChange={setIsFormOpen}
         onSubmit={handleCreateTask}
+        categories={categories}
+        defaultDate={dateString}
       />
 
       {/* タスク編集フォーム */}
@@ -190,7 +194,9 @@ export default function HomePage() {
           open={!!editingTask}
           onOpenChange={(open) => !open && setEditingTask(null)}
           onSubmit={handleUpdateTask}
-          defaultValues={editingTask}
+          categories={categories}
+          defaultDate={dateString}
+          initialData={editingTask}
         />
       )}
     </div>
