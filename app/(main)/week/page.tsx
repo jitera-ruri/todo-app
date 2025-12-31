@@ -1,13 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { format, addDays, startOfWeek, endOfWeek, isToday } from 'date-fns'
+import { format, addDays, startOfWeek, isToday } from 'date-fns'
 import { ja } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Badge } from '@/components/ui/badge'
 import { TaskForm } from '@/components/tasks/TaskForm'
 import { createClient } from '@/lib/supabase/client'
 import { useCategories } from '@/lib/hooks/useCategories'
@@ -23,31 +22,23 @@ const priorityOrder: Record<string, number> = {
 }
 
 // タスクを優先度順にソートする関数
-// 1. 未完了タスクが上、完了済みタスクが下
-// 2. 同じ完了状態内では優先度順（高→中→低）
-// 3. 同じ優先度内では作成日時順（古い順）
 const sortTasksByPriority = (tasks: Task[]): Task[] => {
   return [...tasks].sort((a, b) => {
-    // 1. 完了状態でソート（未完了が上）
     if (a.is_completed !== b.is_completed) {
       return a.is_completed ? 1 : -1
     }
-    
-    // 2. 優先度でソート
     const priorityA = priorityOrder[a.priority] ?? 999
     const priorityB = priorityOrder[b.priority] ?? 999
     const priorityDiff = priorityA - priorityB
     if (priorityDiff !== 0) return priorityDiff
-    
-    // 3. 作成日時でソート（古い順）
     return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   })
 }
 
 const priorityColors = {
-  high: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  medium: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  low: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  high: 'bg-red-500',
+  medium: 'bg-yellow-500',
+  low: 'bg-green-500',
 }
 
 const priorityLabels = {
@@ -69,7 +60,7 @@ export default function WeekPage() {
 
   // 週の日付を計算
   const weekDates = useMemo(() => {
-    const start = startOfWeek(currentDate, { weekStartsOn: 1 }) // 月曜始まり
+    const start = startOfWeek(currentDate, { weekStartsOn: 1 })
     return Array.from({ length: 7 }, (_, i) => addDays(start, i))
   }, [currentDate])
 
@@ -99,7 +90,6 @@ export default function WeekPage() {
 
       if (error) throw error
 
-      // 日付ごとにグループ化し、優先度順にソート
       const grouped: Record<string, Task[]> = {}
       for (const date of weekDates) {
         const dateStr = format(date, 'yyyy-MM-dd')
@@ -174,11 +164,9 @@ export default function WeekPage() {
     if (!error && data) {
       setTasksByDate(prev => {
         const newState = { ...prev }
-        // 古い日付から削除
         for (const dateStr of Object.keys(newState)) {
           newState[dateStr] = newState[dateStr].filter(t => t.id !== editingTask.id)
         }
-        // 新しい日付に追加
         const newDateStr = data.task_date
         if (newState[newDateStr]) {
           newState[newDateStr] = sortTasksByPriority([...newState[newDateStr], data])
@@ -263,10 +251,7 @@ export default function WeekPage() {
                       >
                         <Checkbox
                           checked={task.is_completed}
-                          onCheckedChange={(e) => {
-                            e.stopPropagation?.()
-                            handleToggleComplete(task)
-                          }}
+                          onCheckedChange={() => handleToggleComplete(task)}
                           onClick={(e) => e.stopPropagation()}
                           className="mt-0.5"
                         />
@@ -278,16 +263,21 @@ export default function WeekPage() {
                             {task.title}
                           </p>
                           <div className="flex items-center gap-1 mt-1">
-                            <Badge 
-                              variant="secondary" 
-                              className={cn('text-xs px-1 py-0', priorityColors[task.priority])}
-                            >
+                            {/* 優先度を色付きドットで表示 */}
+                            <span 
+                              className={cn(
+                                'inline-block w-2 h-2 rounded-full',
+                                priorityColors[task.priority]
+                              )}
+                              title={`優先度: ${priorityLabels[task.priority]}`}
+                            />
+                            <span className="text-xs text-gray-500">
                               {priorityLabels[task.priority]}
-                            </Badge>
+                            </span>
                             {task.category && (
-                              <Badge variant="outline" className="text-xs px-1 py-0">
-                                {task.category.name}
-                              </Badge>
+                              <span className="text-xs text-gray-400 ml-1">
+                                | {task.category.name}
+                              </span>
                             )}
                           </div>
                         </div>

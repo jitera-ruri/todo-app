@@ -3,27 +3,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { format, addDays, subDays } from 'date-fns'
 import { ja } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Plus, Calendar } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TaskList } from '@/components/tasks/TaskList'
 import { TaskForm } from '@/components/tasks/TaskForm'
 import { useTasks } from '@/lib/hooks/useTasks'
+import { useCategories } from '@/lib/hooks/useCategories'
 import { useRoutines } from '@/lib/hooks/useRoutines'
 import { createClient } from '@/lib/supabase/client'
-import { Task } from '@/types'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
-import { Calendar as CalendarComponent } from '@/components/ui/calendar'
+import type { Task, TaskFormData } from '@/types'
 
 export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false)
+  
   const { tasks, loading, fetchTasks, createTask, updateTask, deleteTask, toggleComplete, reorderTasks } = useTasks()
+  const { categories } = useCategories()
   const { generateRoutineTasks } = useRoutines()
   const supabase = createClient()
 
@@ -94,23 +90,26 @@ export default function HomePage() {
     setSelectedDate(new Date())
   }
 
-  const handleDateSelect = (date: Date | undefined) => {
-    if (date) {
-      setSelectedDate(date)
-      setIsCalendarOpen(false)
-    }
-  }
-
-  const handleCreateTask = async (data: Omit<Task, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sort_order'>) => {
-    await createTask({ ...data, task_date: dateString })
+  const handleCreateTask = async (formData: TaskFormData) => {
+    await createTask({
+      title: formData.title,
+      memo: formData.memo,
+      category_id: formData.category_id,
+      priority: formData.priority,
+      task_date: dateString,
+    })
     setIsFormOpen(false)
   }
 
-  const handleUpdateTask = async (data: Omit<Task, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'sort_order'>) => {
-    if (editingTask) {
-      await updateTask(editingTask.id, data)
-      setEditingTask(null)
-    }
+  const handleUpdateTask = async (formData: TaskFormData) => {
+    if (!editingTask) return
+    await updateTask(editingTask.id, {
+      title: formData.title,
+      memo: formData.memo,
+      category_id: formData.category_id,
+      priority: formData.priority,
+    })
+    setEditingTask(null)
   }
 
   const handleEditTask = (task: Task) => {
@@ -123,6 +122,11 @@ export default function HomePage() {
 
   const handleToggleComplete = async (id: string) => {
     await toggleComplete(id)
+  }
+
+  const handleMoveToTomorrow = async (id: string) => {
+    const tomorrow = format(addDays(new Date(dateString), 1), 'yyyy-MM-dd')
+    await updateTask(id, { task_date: tomorrow })
   }
 
   const handleReorderTasks = async (reorderedTasks: Task[]) => {
@@ -138,23 +142,9 @@ export default function HomePage() {
         </Button>
         
         <div className="flex items-center gap-2">
-          <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" className="text-lg font-semibold">
-                {format(selectedDate, 'M月d日(E)', { locale: ja })}
-                <Calendar className="ml-2 h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="center">
-              <CalendarComponent
-                mode="single"
-                selected={selectedDate}
-                onSelect={handleDateSelect}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-          
+          <h1 className="text-lg font-semibold">
+            {format(selectedDate, 'M月d日(E)', { locale: ja })}
+          </h1>
           {!isToday && (
             <Button variant="outline" size="sm" onClick={handleToday}>
               今日
@@ -174,6 +164,7 @@ export default function HomePage() {
         onToggleComplete={handleToggleComplete}
         onEdit={handleEditTask}
         onDelete={handleDeleteTask}
+        onMoveToTomorrow={handleMoveToTomorrow}
         onReorder={handleReorderTasks}
       />
 
@@ -190,6 +181,8 @@ export default function HomePage() {
         open={isFormOpen}
         onOpenChange={setIsFormOpen}
         onSubmit={handleCreateTask}
+        categories={categories}
+        defaultDate={dateString}
       />
 
       {/* タスク編集フォーム */}
@@ -197,8 +190,9 @@ export default function HomePage() {
         open={!!editingTask}
         onOpenChange={(open) => !open && setEditingTask(null)}
         onSubmit={handleUpdateTask}
-        defaultValues={editingTask || undefined}
-        isEditing
+        categories={categories}
+        initialData={editingTask}
+        defaultDate={dateString}
       />
     </div>
   )
