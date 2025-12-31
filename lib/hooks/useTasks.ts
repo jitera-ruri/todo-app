@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, CreateTaskInput, UpdateTaskInput } from '@/types'
+import { Task, CreateTaskInput, UpdateTaskInput } from '@/types'
 
 // 優先度の重み付け（高→中→低の順）
 const priorityOrder: Record<string, number> = {
@@ -13,7 +13,7 @@ const priorityOrder: Record<string, number> = {
 
 // タスクを優先度順にソートする関数
 // 1. 未完了タスクが上、完了済みタスクが下
-// 2. 同じ完了状態内では優先度順（高→中→低）
+// 2. 同じ完了状態内では優先度順（高→ルーティン(高→中→低)→中→低）
 // 3. 同じ優先度内では作成日時順（古い順）
 export const sortTasksByPriority = (tasks: Task[]): Task[] => {
   return [...tasks].sort((a, b) => {
@@ -22,9 +22,21 @@ export const sortTasksByPriority = (tasks: Task[]): Task[] => {
       return a.is_completed ? 1 : -1
     }
     
-    // 2. 優先度でソート
-    const priorityA = priorityOrder[a.priority] ?? 999
-    const priorityB = priorityOrder[b.priority] ?? 999
+    // 2. 優先度でソート（ルーティンタスクは高と中の間）
+    const getPriorityValue = (task: Task): number => {
+      const basePriority = priorityOrder[task.priority] ?? 999
+      
+      if (task.routine_id) {
+        // ルーティンタスクは高と中の間に配置
+        // 高(1) → ルーティン高(1.1) → ルーティン中(1.2) → ルーティン低(1.3) → 中(2) → 低(3)
+        return 1 + basePriority * 0.1
+      }
+      
+      return basePriority
+    }
+    
+    const priorityA = getPriorityValue(a)
+    const priorityB = getPriorityValue(b)
     const priorityDiff = priorityA - priorityB
     if (priorityDiff !== 0) return priorityDiff
     
@@ -48,7 +60,7 @@ export function useTasks() {
 
       const { data, error } = await supabase
         .from('tasks')
-        .select('*, category:categories(*)')
+        .select('*')
         .eq('user_id', user.id)
         .eq('task_date', date)
         .order('created_at', { ascending: true })
@@ -78,7 +90,7 @@ export function useTasks() {
           user_id: user.id,
           sort_order: 0,
         })
-        .select('*, category:categories(*)')
+        .select()
         .single()
 
       if (error) throw error
@@ -97,9 +109,9 @@ export function useTasks() {
     try {
       const { data, error } = await supabase
         .from('tasks')
-        .update({ ...input, updated_at: new Date().toISOString() })
+        .update(input)
         .eq('id', id)
-        .select('*, category:categories(*)')
+        .select()
         .single()
 
       if (error) throw error
@@ -152,5 +164,73 @@ export function useTasks() {
     deleteTask,
     toggleComplete,
     reorderTasks,
+  }
+}
+
+// 週間ビュー用のhook
+export function useWeekTasks() {
+  const [tasksByDate, setTasksByDate] = useState<Record<string, Task[]>>({})
+  const [loading, setLoading] = useState(false)
+  const supabase = createClient()
+
+  const fetchWeekTasks = useCallback(async (dates: Date[]) => {
+    setLoading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const dateStrings = dates.map(d => d.toISOString().split('T')[0])
+      
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('*, category:categories(*)')
+        .eq('user_id', user.id)
+        .in('task_date', dateStrings)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+
+      // 日付ごとにグループ化し、優先度順にソート
+      const grouped: Record<string, Task[]> = {}
+      for (const dateStr of dateStrings) {
+        const tasksForDate = (data || []).filter(t => t.task_date === dateStr)
+        grouped[dateStr] = sortTasksByPriority(tasksForDate)
+      }
+      setTasksByDate(grouped)
+    } catch (err) {
+      console.error('週間タスクの取得に失敗しました:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [supabase])
+
+  const updateTaskInWeek = useCallback((updatedTask: Task) => {
+    setTasksByDate(prev => {
+      const newState = { ...prev }
+      for (const date of Object.keys(newState)) {
+        newState[date] = sortTasksByPriority(
+          newState[date].map(t => t.id === updatedTask.id ? updatedTask : t)
+        )
+      }
+      return newState
+    })
+  }, [])
+
+  const removeTaskFromWeek = useCallback((taskId: string) => {
+    setTasksByDate(prev => {
+      const newState = { ...prev }
+      for (const date of Object.keys(newState)) {
+        newState[date] = newState[date].filter(t => t.id !== taskId)
+      }
+      return newState
+    })
+  }, [])
+
+  return {
+    tasksByDate,
+    loading,
+    fetchWeekTasks,
+    updateTaskInWeek,
+    removeTaskFromWeek,
   }
 }
