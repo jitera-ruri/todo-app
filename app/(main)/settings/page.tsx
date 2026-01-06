@@ -5,8 +5,9 @@ import { Save, Plus, Pencil, Trash2, X, Check, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { useToast } from '@/components/ui/use-toast'
-import { useCategories } from '@/lib/hooks/useCategories'
+import { useCategories, CATEGORY_COLORS } from '@/lib/hooks/useCategories'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import type { Profile, Category } from '@/types'
@@ -17,8 +18,10 @@ export default function SettingsPage() {
   const [notificationEnabled, setNotificationEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
   const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryColor, setNewCategoryColor] = useState('#3B82F6')
   const [editingCategory, setEditingCategory] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [editingColor, setEditingColor] = useState('')
   const [mounted, setMounted] = useState(false)
   
   const { categories, addCategory, updateCategory, deleteCategory } = useCategories()
@@ -33,7 +36,10 @@ export default function SettingsPage() {
   useEffect(() => {
     const fetchProfile = async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) {
+        router.push('/login')
+        return
+      }
 
       const { data } = await supabase
         .from('profiles')
@@ -43,26 +49,28 @@ export default function SettingsPage() {
 
       if (data) {
         setProfile(data)
-        setNotificationTime(data.notification_time?.slice(0, 5) || '10:00')
-        setNotificationEnabled(data.notification_enabled)
+        setNotificationTime(data.notification_time || '10:00')
+        setNotificationEnabled(data.notification_enabled ?? true)
       }
     }
 
     fetchProfile()
-  }, [supabase])
+  }, [supabase, router])
 
-  const handleSaveNotification = async () => {
+  const handleSaveSettings = async () => {
     if (!profile) return
 
     setSaving(true)
     const { error } = await supabase
       .from('profiles')
       .update({
-        notification_time: notificationTime + ':00',
+        notification_time: notificationTime,
         notification_enabled: notificationEnabled,
         updated_at: new Date().toISOString(),
       })
       .eq('id', profile.id)
+
+    setSaving(false)
 
     if (error) {
       toast({
@@ -73,21 +81,27 @@ export default function SettingsPage() {
     } else {
       toast({
         title: '保存完了',
-        description: '通知設定を保存しました。',
+        description: '設定を保存しました。',
       })
     }
-    setSaving(false)
   }
 
   const handleAddCategory = async () => {
     if (!newCategoryName.trim()) return
 
-    const result = await addCategory(newCategoryName.trim())
+    const result = await addCategory(newCategoryName.trim(), newCategoryColor)
     if (result) {
       setNewCategoryName('')
+      setNewCategoryColor('#3B82F6')
       toast({
         title: '追加完了',
         description: 'カテゴリを追加しました。',
+      })
+    } else {
+      toast({
+        title: 'エラー',
+        description: 'カテゴリの追加に失敗しました。',
+        variant: 'destructive',
       })
     }
   }
@@ -95,18 +109,26 @@ export default function SettingsPage() {
   const handleStartEdit = (category: Category) => {
     setEditingCategory(category.id)
     setEditingName(category.name)
+    setEditingColor(category.color)
   }
 
   const handleSaveEdit = async (id: string) => {
     if (!editingName.trim()) return
 
-    const result = await updateCategory(id, editingName.trim())
+    const result = await updateCategory(id, editingName.trim(), editingColor)
     if (result) {
       setEditingCategory(null)
       setEditingName('')
+      setEditingColor('')
       toast({
         title: '更新完了',
         description: 'カテゴリを更新しました。',
+      })
+    } else {
+      toast({
+        title: 'エラー',
+        description: 'カテゴリの更新に失敗しました。',
+        variant: 'destructive',
       })
     }
   }
@@ -114,14 +136,31 @@ export default function SettingsPage() {
   const handleCancelEdit = () => {
     setEditingCategory(null)
     setEditingName('')
+    setEditingColor('')
   }
 
   const handleDeleteCategory = async (id: string) => {
+    const category = categories.find(c => c.id === id)
+    if (category?.is_default) {
+      toast({
+        title: 'エラー',
+        description: 'デフォルトカテゴリは削除できません。',
+        variant: 'destructive',
+      })
+      return
+    }
+
     const result = await deleteCategory(id)
     if (result) {
       toast({
         title: '削除完了',
         description: 'カテゴリを削除しました。',
+      })
+    } else {
+      toast({
+        title: 'エラー',
+        description: 'カテゴリの削除に失敗しました。',
+        variant: 'destructive',
       })
     }
   }
@@ -132,55 +171,29 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-xl font-bold text-slate-900">設定</h1>
-
-      {/* Routine Management Link */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <button
-          onClick={() => router.push('/settings/routines')}
-          className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <Repeat className="h-5 w-5 text-blue-600" />
-            </div>
-            <div className="text-left">
-              <h2 className="font-semibold text-slate-900">ルーティン管理</h2>
-              <p className="text-sm text-slate-500">毎日繰り返すタスクを設定</p>
-            </div>
-          </div>
-          <svg className="h-5 w-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
-      </div>
-
       {/* Notification Settings */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
           <h2 className="font-semibold text-slate-900">通知設定</h2>
-          <p className="text-sm text-slate-500">毎朝の通知時間を設定します</p>
+          <p className="text-sm text-slate-500">リマインダー通知の設定を変更できます</p>
         </div>
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-6">
           <div className="flex items-center justify-between">
-            <Label htmlFor="notification-enabled" className="text-slate-700">通知を有効にする</Label>
-            <button
+            <div className="space-y-0.5">
+              <Label htmlFor="notification-enabled">通知を有効にする</Label>
+              <p className="text-sm text-slate-500">
+                毎日のリマインダー通知を受け取る
+              </p>
+            </div>
+            <Switch
               id="notification-enabled"
-              onClick={() => setNotificationEnabled(!notificationEnabled)}
-              className={`w-12 h-6 rounded-full transition-colors ${
-                notificationEnabled ? 'bg-blue-500' : 'bg-slate-300'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 bg-white rounded-full shadow transform transition-transform ${
-                  notificationEnabled ? 'translate-x-6' : 'translate-x-0.5'
-                }`}
-              />
-            </button>
+              checked={notificationEnabled}
+              onCheckedChange={setNotificationEnabled}
+            />
           </div>
-          
+
           <div className="space-y-2">
-            <Label htmlFor="notification-time" className="text-slate-700">通知時間</Label>
+            <Label htmlFor="notification-time">通知時刻</Label>
             <Input
               id="notification-time"
               type="time"
@@ -189,15 +202,18 @@ export default function SettingsPage() {
               disabled={!notificationEnabled}
               className="w-32 bg-white border-slate-200"
             />
+            <p className="text-sm text-slate-500">
+              指定した時刻に未完了タスクの通知を受け取ります
+            </p>
           </div>
 
           <Button 
-            onClick={handleSaveNotification} 
+            onClick={handleSaveSettings} 
             disabled={saving}
             className="bg-blue-500 hover:bg-blue-600 text-white"
           >
             <Save className="h-4 w-4 mr-2" />
-            保存
+            {saving ? '保存中...' : '設定を保存'}
           </Button>
         </div>
       </div>
@@ -210,22 +226,44 @@ export default function SettingsPage() {
         </div>
         <div className="p-6 space-y-4">
           {/* Add Category */}
-          <div className="flex gap-2">
-            <Input
-              placeholder="新しいカテゴリ名"
-              value={newCategoryName}
-              onChange={(e) => setNewCategoryName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
-              className="bg-white border-slate-200"
-            />
-            <Button 
-              onClick={handleAddCategory} 
-              disabled={!newCategoryName.trim()}
-              className="bg-blue-500 hover:bg-blue-600 text-white"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              追加
-            </Button>
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                placeholder="新しいカテゴリ名"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddCategory()}
+                className="bg-white border-slate-200"
+              />
+              <Button 
+                onClick={handleAddCategory} 
+                disabled={!newCategoryName.trim()}
+                className="bg-blue-500 hover:bg-blue-600 text-white"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                追加
+              </Button>
+            </div>
+            {/* Color Palette for New Category */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-500 min-w-[24px]">色:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {CATEGORY_COLORS.map((color) => (
+                  <button
+                    key={color.value}
+                    type="button"
+                    onClick={() => setNewCategoryColor(color.value)}
+                    className={`w-6 h-6 rounded-full transition-all ${
+                      newCategoryColor === color.value 
+                        ? 'ring-2 ring-offset-2 ring-slate-400 scale-110' 
+                        : 'hover:scale-110'
+                    }`}
+                    style={{ backgroundColor: color.value }}
+                    title={color.label}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Category List */}
@@ -236,33 +274,66 @@ export default function SettingsPage() {
                 className="flex items-center justify-between p-3 bg-slate-50 rounded-lg"
               >
                 {editingCategory === category.id ? (
-                  <div className="flex items-center gap-2 flex-1">
-                    <Input
-                      value={editingName}
-                      onChange={(e) => setEditingName(e.target.value)}
-                      className="h-8 bg-white border-slate-200"
-                      autoFocus
-                    />
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8"
-                      onClick={() => handleSaveEdit(category.id)}
-                    >
-                      <Check className="h-4 w-4 text-green-600" />
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8"
-                      onClick={handleCancelEdit}
-                    >
-                      <X className="h-4 w-4 text-slate-500" />
-                    </Button>
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        className="h-8 bg-white border-slate-200"
+                        autoFocus
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => handleSaveEdit(category.id)}
+                      >
+                        <Check className="h-4 w-4 text-green-600" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={handleCancelEdit}
+                      >
+                        <X className="h-4 w-4 text-slate-500" />
+                      </Button>
+                    </div>
+                    {/* Color Palette for Editing */}
+                    <div className="flex flex-wrap gap-1.5 pl-1">
+                      {CATEGORY_COLORS.map((color) => (
+                        <button
+                          key={color.value}
+                          type="button"
+                          onClick={() => setEditingColor(color.value)}
+                          className={`w-5 h-5 rounded-full transition-all ${
+                            editingColor === color.value 
+                              ? 'ring-2 ring-offset-1 ring-slate-400 scale-110' 
+                              : 'hover:scale-110'
+                          }`}
+                          style={{ backgroundColor: color.value }}
+                          title={color.label}
+                        />
+                      ))}
+                    </div>
                   </div>
                 ) : (
                   <>
-                    <span className="font-medium text-slate-700">{category.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span 
+                        className="w-3 h-3 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: category.color }}
+                      />
+                      <span 
+                        className="font-medium"
+                        style={{ color: category.color }}
+                      >
+                        {category.name}
+                      </span>
+                      {category.is_default && (
+                        <span className="text-xs text-slate-400">(デフォルト)</span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1">
                       <Button
                         size="icon"
@@ -272,14 +343,16 @@ export default function SettingsPage() {
                       >
                         <Pencil className="h-4 w-4 text-slate-500" />
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8"
-                        onClick={() => handleDeleteCategory(category.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-500" />
-                      </Button>
+                      {!category.is_default && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-8 w-8"
+                          onClick={() => handleDeleteCategory(category.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      )}
                     </div>
                   </>
                 )}
@@ -289,16 +362,21 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Account Info */}
+      {/* Routine Settings Link */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50">
-          <h2 className="font-semibold text-slate-900">アカウント情報</h2>
+          <h2 className="font-semibold text-slate-900">ルーティン設定</h2>
+          <p className="text-sm text-slate-500">繰り返しタスクの設定を管理できます</p>
         </div>
         <div className="p-6">
-          <div className="space-y-2">
-            <Label className="text-slate-700">メールアドレス</Label>
-            <p className="text-sm text-slate-500">{profile?.email}</p>
-          </div>
+          <Button 
+            variant="outline" 
+            onClick={() => router.push('/settings/routines')}
+            className="w-full justify-start"
+          >
+            <Repeat className="h-4 w-4 mr-2" />
+            ルーティン設定を開く
+          </Button>
         </div>
       </div>
     </div>

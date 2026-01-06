@@ -128,9 +128,15 @@ export function TaskItem({
               {priorityConfig.label}
             </span>
 
-            {/* Category Badge */}
+            {/* Category Badge - カテゴリ色を動的に適用 */}
             {task.category && (
-              <span className="px-2 py-0.5 text-xs font-medium rounded-md bg-slate-100 text-slate-600">
+              <span 
+                className="px-2 py-0.5 text-xs font-medium rounded-md"
+                style={{ 
+                  backgroundColor: `${task.category.color}20`,
+                  color: task.category.color 
+                }}
+              >
                 {task.category.name}
               </span>
             )}

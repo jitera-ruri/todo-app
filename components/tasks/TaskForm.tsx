@@ -46,6 +46,9 @@ export function TaskForm({
   const [taskDate, setTaskDate] = useState(defaultDate)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
+  // 選択中のカテゴリを取得
+  const selectedCategory = categories.find(c => c.id === categoryId)
+
   useEffect(() => {
     if (initialData) {
       setTitle(initialData.title)
@@ -135,13 +138,37 @@ export function TaskForm({
               <Label className="text-slate-700">カテゴリ</Label>
               <Select value={categoryId} onValueChange={setCategoryId}>
                 <SelectTrigger className="h-12 rounded-xl bg-white border-slate-200">
-                  <SelectValue placeholder="選択..." />
+                  <SelectValue placeholder="選択...">
+                    {categoryId === 'none' ? (
+                      'なし'
+                    ) : selectedCategory ? (
+                      <span className="flex items-center gap-2">
+                        <span 
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: selectedCategory.color }}
+                        />
+                        <span style={{ color: selectedCategory.color }}>
+                          {selectedCategory.name}
+                        </span>
+                      </span>
+                    ) : (
+                      '選択...'
+                    )}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white">
                   <SelectItem value="none">なし</SelectItem>
                   {categories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
-                      {category.name}
+                      <span className="flex items-center gap-2">
+                        <span 
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: category.color }}
+                        />
+                        <span style={{ color: category.color }}>
+                          {category.name}
+                        </span>
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -4,6 +4,24 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Category } from '@/types'
 
+// カラーパレット定義
+export const CATEGORY_COLORS = [
+  { value: '#6B7280', label: 'グレー' },
+  { value: '#EF4444', label: 'レッド' },
+  { value: '#F97316', label: 'オレンジ' },
+  { value: '#F59E0B', label: 'アンバー' },
+  { value: '#EAB308', label: 'イエロー' },
+  { value: '#84CC16', label: 'ライム' },
+  { value: '#22C55E', label: 'グリーン' },
+  { value: '#14B8A6', label: 'ティール' },
+  { value: '#06B6D4', label: 'シアン' },
+  { value: '#3B82F6', label: 'ブルー' },
+  { value: '#6366F1', label: 'インディゴ' },
+  { value: '#8B5CF6', label: 'バイオレット' },
+  { value: '#A855F7', label: 'パープル' },
+  { value: '#EC4899', label: 'ピンク' },
+] as const
+
 export function useCategories() {
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -29,7 +47,7 @@ export function useCategories() {
     fetchCategories()
   }, [fetchCategories])
 
-  const addCategory = async (name: string) => {
+  const addCategory = async (name: string, color: string = '#6B7280') => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return null
 
@@ -41,6 +59,7 @@ export function useCategories() {
       .from('categories')
       .insert({
         name,
+        color,
         user_id: user.id,
         sort_order: maxOrder,
         is_default: false,
@@ -57,10 +76,19 @@ export function useCategories() {
     return data
   }
 
-  const updateCategory = async (id: string, name: string) => {
+  const updateCategory = async (id: string, name: string, color?: string) => {
+    const updateData: { name: string; color?: string; updated_at: string } = {
+      name,
+      updated_at: new Date().toISOString(),
+    }
+    
+    if (color) {
+      updateData.color = color
+    }
+
     const { data, error } = await supabase
       .from('categories')
-      .update({ name, updated_at: new Date().toISOString() })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single()
