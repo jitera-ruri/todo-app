@@ -214,60 +214,69 @@ export default function WeekPage() {
                     タスクなし
                   </div>
                 ) : (
-                  dayTasks.map((task) => (
-                    <button
-                      key={task.id}
-                      onClick={() => handleToggleComplete(task.id)}
-                      className={cn(
-                        'w-full text-left p-2 rounded-lg text-xs transition-all',
-                        task.is_completed
-                          ? 'bg-slate-100 text-slate-400'
-                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700'
-                      )}
-                    >
-                      <div className="flex items-start gap-1.5">
-                        <div
-                          className={cn(
-                            'w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center mt-0.5',
-                            task.is_completed
-                              ? 'bg-blue-500 border-blue-500'
-                              : 'border-slate-300'
-                          )}
-                        >
-                          {task.is_completed && (
-                            <Check className="h-3 w-3 text-white" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1">
-                            {task.routine_id && (
-                              <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                  dayTasks.map((task) => {
+                    // カテゴリの色を取得
+                    const categoryColor = task.category?.color || '#334155'
+                    
+                    return (
+                      <button
+                        key={task.id}
+                        onClick={() => handleToggleComplete(task.id)}
+                        className={cn(
+                          'w-full text-left p-2 rounded-lg text-xs transition-all',
+                          task.is_completed
+                            ? 'bg-slate-100'
+                            : 'bg-slate-50 hover:bg-slate-100'
+                        )}
+                      >
+                        <div className="flex items-start gap-1.5">
+                          <div
+                            className={cn(
+                              'w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center mt-0.5',
+                              task.is_completed
+                                ? 'bg-blue-500 border-blue-500'
+                                : 'border-slate-300'
                             )}
-                            <span
-                              className={cn(
-                                'truncate font-medium',
-                                task.is_completed && 'line-through'
-                              )}
-                            >
-                              {task.title}
-                            </span>
+                          >
+                            {task.is_completed && (
+                              <Check className="h-3 w-3 text-white" />
+                            )}
                           </div>
-                          {/* Category Badge - カテゴリ色を動的に適用 */}
-                          {task.category && (
-                            <span
-                              className="inline-block mt-1 px-1.5 py-0.5 text-[10px] font-medium rounded"
-                              style={{
-                                backgroundColor: `${task.category.color}20`,
-                                color: task.category.color,
-                              }}
-                            >
-                              {task.category.name}
-                            </span>
-                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1">
+                              {task.routine_id && (
+                                <Repeat className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                              )}
+                              {/* タスクタイトル - カテゴリ色を適用 */}
+                              <span
+                                className={cn(
+                                  'truncate font-medium',
+                                  task.is_completed && 'line-through opacity-60'
+                                )}
+                                style={{
+                                  color: task.is_completed ? '#94a3b8' : categoryColor
+                                }}
+                              >
+                                {task.title}
+                              </span>
+                            </div>
+                            {/* Category Badge */}
+                            {task.category && (
+                              <span
+                                className="inline-block mt-1 px-1.5 py-0.5 text-[10px] font-medium rounded"
+                                style={{
+                                  backgroundColor: `${task.category.color}20`,
+                                  color: task.category.color,
+                                }}
+                              >
+                                {task.category.name}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))
+                      </button>
+                    )
+                  })
                 )}
               </div>
             </div>

@@ -14,7 +14,7 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useCategories } from '@/lib/hooks/useCategories'
 import { cn } from '@/lib/utils'
-import type { Task, Priority } from '@/types'
+import type { Task } from '@/types'
 import { PRIORITY_CONFIG } from '@/types'
 
 export default function SearchPage() {
@@ -223,79 +223,86 @@ export default function SearchPage() {
               タスクが見つかりませんでした
             </div>
           ) : (
-            tasks.map((task) => (
-              <div
-                key={task.id}
-                className={cn(
-                  'flex items-center gap-3 p-4 transition-all',
-                  task.is_completed && 'bg-slate-50'
-                )}
-              >
-                {/* Checkbox */}
-                <button
-                  onClick={() => handleToggleComplete(task.id)}
+            tasks.map((task) => {
+              // カテゴリの色を取得
+              const categoryColor = task.category?.color || '#334155'
+              
+              return (
+                <div
+                  key={task.id}
                   className={cn(
-                    'w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0',
-                    task.is_completed
-                      ? 'bg-gradient-to-br from-blue-500 to-indigo-500 border-transparent'
-                      : 'border-slate-300 hover:border-blue-400'
+                    'flex items-center gap-3 p-4 transition-all',
+                    task.is_completed && 'bg-slate-50'
                   )}
                 >
-                  {task.is_completed && (
-                    <Check className="h-4 w-4 text-white" />
-                  )}
-                </button>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {task.routine_id && (
-                      <Repeat className="h-4 w-4 text-blue-500 flex-shrink-0" />
+                  {/* Checkbox */}
+                  <button
+                    onClick={() => handleToggleComplete(task.id)}
+                    className={cn(
+                      'w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0',
+                      task.is_completed
+                        ? 'bg-gradient-to-br from-blue-500 to-indigo-500 border-transparent'
+                        : 'border-slate-300 hover:border-blue-400'
                     )}
-                    <span
-                      className={cn(
-                        'font-medium',
-                        task.is_completed
-                          ? 'line-through text-slate-400'
-                          : 'text-slate-800'
-                      )}
-                    >
-                      {task.title}
-                    </span>
+                  >
+                    {task.is_completed && (
+                      <Check className="h-4 w-4 text-white" />
+                    )}
+                  </button>
 
-                    {/* Priority Badge */}
-                    <span
-                      className={cn(
-                        'px-2 py-0.5 text-xs font-semibold rounded-md',
-                        task.priority === 'high' && 'bg-red-100 text-red-700',
-                        task.priority === 'medium' && 'bg-amber-100 text-amber-700',
-                        task.priority === 'low' && 'bg-green-100 text-green-700',
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {task.routine_id && (
+                        <Repeat className="h-4 w-4 text-blue-500 flex-shrink-0" />
                       )}
-                    >
-                      {PRIORITY_CONFIG[task.priority].label}
-                    </span>
-
-                    {/* Category Badge - カテゴリ色を動的に適用 */}
-                    {task.category && (
+                      {/* タスクタイトル - カテゴリ色を適用 */}
                       <span
-                        className="px-2 py-0.5 text-xs font-medium rounded-md"
+                        className={cn(
+                          'font-medium',
+                          task.is_completed && 'line-through opacity-60'
+                        )}
                         style={{
-                          backgroundColor: `${task.category.color}20`,
-                          color: task.category.color
+                          color: task.is_completed ? '#94a3b8' : categoryColor
                         }}
                       >
-                        {task.category.name}
+                        {task.title}
                       </span>
-                    )}
-                  </div>
 
-                  {/* Date */}
-                  <div className="mt-1 text-xs text-slate-400">
-                    {task.task_date}
+                      {/* Priority Badge */}
+                      <span
+                        className={cn(
+                          'px-2 py-0.5 text-xs font-semibold rounded-md',
+                          task.priority === 'high' && 'bg-red-100 text-red-700',
+                          task.priority === 'medium' && 'bg-amber-100 text-amber-700',
+                          task.priority === 'low' && 'bg-green-100 text-green-700',
+                        )}
+                      >
+                        {PRIORITY_CONFIG[task.priority].label}
+                      </span>
+
+                      {/* Category Badge */}
+                      {task.category && (
+                        <span
+                          className="px-2 py-0.5 text-xs font-medium rounded-md"
+                          style={{
+                            backgroundColor: `${task.category.color}20`,
+                            color: task.category.color
+                          }}
+                        >
+                          {task.category.name}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Date */}
+                    <div className="mt-1 text-xs text-slate-400">
+                      {task.task_date}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

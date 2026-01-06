@@ -60,6 +60,9 @@ export function TaskItem({
 
   const priorityConfig = PRIORITY_CONFIG[task.priority]
 
+  // カテゴリの色を取得（なければデフォルト色）
+  const categoryColor = task.category?.color || '#334155'
+
   return (
     <>
       <div
@@ -105,13 +108,15 @@ export function TaskItem({
               </span>
             )}
             
+            {/* タスクタイトル - カテゴリ色を適用 */}
             <span
               className={cn(
                 'font-medium transition-all',
-                task.is_completed 
-                  ? 'line-through text-slate-400' 
-                  : 'text-slate-800'
+                task.is_completed && 'line-through opacity-60'
               )}
+              style={{
+                color: task.is_completed ? '#94a3b8' : categoryColor
+              }}
             >
               {task.title}
             </span>
@@ -128,7 +133,7 @@ export function TaskItem({
               {priorityConfig.label}
             </span>
 
-            {/* Category Badge - カテゴリ色を動的に適用 */}
+            {/* Category Badge */}
             {task.category && (
               <span 
                 className="px-2 py-0.5 text-xs font-medium rounded-md"
