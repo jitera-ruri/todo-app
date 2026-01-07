@@ -1,35 +1,43 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { format, addDays, subDays } from 'date-fns'
-import { ja } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Calendar, Search } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core'
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Button } from '@/components/ui/button'
-import { TaskList } from '@/components/tasks/TaskList'
-import { TaskInput } from '@/components/tasks/TaskInput'
-import { TaskEditDialog } from '@/components/tasks/TaskEditDialog'
+import { TaskItem } from '@/components/tasks/TaskItem'
+import { TaskForm } from '@/components/tasks/TaskForm'
 import { useTasks } from '@/lib/hooks/useTasks'
+import { useCategories } from '@/lib/hooks/useCategories'
 import { useRoutines } from '@/lib/hooks/useRoutines'
-import { Task, UpdateTaskInput } from '@/types'
 import { createClient } from '@/lib/supabase/client'
-import Link from 'next/link'
+import type { Task, TaskFormData } from '@/types'
 
 export default function HomePage() {
-  const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
-  const supabase = createClient()
   
   const { tasks, loading, refetch, createTask, updateTask, deleteTask, toggleComplete, reorderTasks, carryOverIncompleteTasks } = useTasks(selectedDate)
+  const { categories } = useCategories()
   const { generateRoutineTasks } = useRoutines()
+  const supabase = createClient()
 
-  // 日付変更時にルーティンタスクを生成
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  // ルーティンタスクの自動生成と未完了タスクの繰り越し
   useEffect(() => {
     const checkAndGenerateRoutines = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
       // 未完了タスクを今日に繰り越し（今日の日付を見ている場合のみ）
-      const today = format(new Date(), 'yyyy-MM-dd')
+      const today = new Date().toISOString().split('T')[0]
       if (selectedDate === today) {
         const carriedOver = await carryOverIncompleteTasks()
         if (carriedOver > 0) {
@@ -41,140 +49,186 @@ export default function HomePage() {
       await generateRoutineTasks(selectedDate)
       refetch()
     }
-    
+
     checkAndGenerateRoutines()
   }, [selectedDate, generateRoutineTasks, carryOverIncompleteTasks, supabase, refetch])
 
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const month = date.getMonth() + 1
+    const day = date.getDate()
+    const weekdays = ['日', '月', '火', '水', '木', '金', '土']
+    const weekday = weekdays[date.getDay()]
+    return `${month}月${day}日(${weekday})`
+  }
+
   const goToPreviousDay = () => {
-    setSelectedDate(prev => format(subDays(new Date(prev), 1), 'yyyy-MM-dd'))
+    const date = new Date(selectedDate)
+    date.setDate(date.getDate() - 1)
+    setSelectedDate(date.toISOString().split('T')[0])
   }
 
   const goToNextDay = () => {
-    setSelectedDate(prev => format(addDays(new Date(prev), 1), 'yyyy-MM-dd'))
+    const date = new Date(selectedDate)
+    date.setDate(date.getDate() + 1)
+    setSelectedDate(date.toISOString().split('T')[0])
   }
 
   const goToToday = () => {
-    setSelectedDate(format(new Date(), 'yyyy-MM-dd'))
+    setSelectedDate(new Date().toISOString().split('T')[0])
   }
 
-  const handleCreateTask = async (title: string) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      const oldIndex = tasks.findIndex((task) => task.id === active.id)
+      const newIndex = tasks.findIndex((task) => task.id === over.id)
+      const newTasks = arrayMove(tasks, oldIndex, newIndex)
+      await reorderTasks(newTasks)
+    }
+  }
+
+  const handleCreateTask = async (data: TaskFormData) => {
     await createTask({
-      title,
-      task_date: selectedDate,
+      title: data.title,
+      memo: data.memo,
+      priority: data.priority,
+      category_id: data.category_id,
+      task_date: data.task_date,
     })
+    setIsFormOpen(false)
   }
 
-  const handleToggleComplete = async (id: string) => {
-    await toggleComplete(id)
+  const handleUpdateTask = async (data: TaskFormData) => {
+    if (!editingTask) return
+    await updateTask(editingTask.id, {
+      title: data.title,
+      memo: data.memo,
+      priority: data.priority,
+      category_id: data.category_id,
+      task_date: data.task_date,
+    })
+    setEditingTask(null)
   }
 
   const handleDeleteTask = async (id: string) => {
     await deleteTask(id)
   }
 
-  const handleEditTask = (task: Task) => {
-    setEditingTask(task)
+  const handleToggleComplete = async (id: string) => {
+    await toggleComplete(id)
   }
 
-  const handleUpdateTask = async (id: string, input: UpdateTaskInput) => {
-    await updateTask(id, input)
-    setEditingTask(null)
+  const handleMoveToTomorrow = async (id: string) => {
+    const tomorrow = new Date(selectedDate)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    const tomorrowStr = tomorrow.toISOString().split('T')[0]
+    
+    await updateTask(id, { task_date: tomorrowStr })
+    refetch()
   }
 
-  const handleReorderTasks = async (reorderedTasks: Task[]) => {
-    await reorderTasks(reorderedTasks)
-  }
-
-  const isToday = selectedDate === format(new Date(), 'yyyy-MM-dd')
-  const displayDate = new Date(selectedDate)
+  const isToday = selectedDate === new Date().toISOString().split('T')[0]
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* ヘッダー */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-2xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={goToPreviousDay}
-                className="h-8 w-8"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              
-              <div className="text-center min-w-[140px]">
-                <div className="text-lg font-semibold">
-                  {format(displayDate, 'M月d日', { locale: ja })}
-                  <span className="text-sm font-normal text-gray-500 ml-1">
-                    ({format(displayDate, 'E', { locale: ja })})
-                  </span>
-                </div>
-                {isToday && (
-                  <div className="text-xs text-blue-600 font-medium">今日</div>
-                )}
-              </div>
-              
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={goToNextDay}
-                className="h-8 w-8"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+    <div className="space-y-4">
+      {/* Date Navigation */}
+      <div className="flex items-center justify-between">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={goToPreviousDay}
+          className="rounded-xl"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        
+        <div className="text-center">
+          <h1 
+            className="text-2xl font-bold text-slate-900 cursor-pointer hover:text-blue-600 transition-colors"
+            onClick={goToToday}
+          >
+            {formatDate(selectedDate)}
+          </h1>
+          {!isToday && (
+            <button 
+              onClick={goToToday}
+              className="text-sm text-blue-500 hover:text-blue-600"
+            >
+              今日に戻る
+            </button>
+          )}
+        </div>
 
-            <div className="flex items-center gap-2">
-              <Link href="/search">
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Search className="h-4 w-4" />
-                </Button>
-              </Link>
-              {!isToday && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={goToToday}
-                  className="text-xs"
-                >
-                  <Calendar className="h-3 w-3 mr-1" />
-                  今日
-                </Button>
-              )}
-            </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={goToNextDay}
+          className="rounded-xl"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Task List */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-slate-400">
+            読み込み中...
           </div>
-        </div>
-      </header>
+        ) : tasks.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">
+            タスクがありません
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={tasks.map(t => t.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {tasks.map((task) => (
+                <TaskItem
+                  key={task.id}
+                  task={task}
+                  onToggleComplete={handleToggleComplete}
+                  onEdit={setEditingTask}
+                  onDelete={handleDeleteTask}
+                  onMoveToTomorrow={handleMoveToTomorrow}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        )}
+      </div>
 
-      {/* メインコンテンツ */}
-      <main className="max-w-2xl mx-auto px-4 py-6">
-        {/* タスク入力 */}
-        <div className="mb-6">
-          <TaskInput onSubmit={handleCreateTask} />
-        </div>
+      {/* Add Task Button */}
+      <Button
+        onClick={() => setIsFormOpen(true)}
+        className="w-full h-14 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white shadow-lg shadow-blue-500/25"
+      >
+        <Plus className="h-5 w-5 mr-2" />
+        タスクを追加
+      </Button>
 
-        {/* タスクリスト */}
-        <TaskList
-          tasks={tasks}
-          loading={loading}
-          onToggleComplete={handleToggleComplete}
-          onDelete={handleDeleteTask}
-          onEdit={handleEditTask}
-          onReorder={handleReorderTasks}
-        />
-      </main>
-
-      {/* 編集ダイアログ */}
-      {editingTask && (
-        <TaskEditDialog
-          task={editingTask}
-          open={!!editingTask}
-          onOpenChange={(open) => !open && setEditingTask(null)}
-          onSave={handleUpdateTask}
-        />
-      )}
+      {/* Task Form Dialog */}
+      <TaskForm
+        open={isFormOpen || !!editingTask}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsFormOpen(false)
+            setEditingTask(null)
+          }
+        }}
+        onSubmit={editingTask ? handleUpdateTask : handleCreateTask}
+        categories={categories}
+        initialData={editingTask}
+        defaultDate={selectedDate}
+      />
     </div>
   )
 }
