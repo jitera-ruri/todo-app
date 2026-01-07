@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useWishLists } from '@/lib/hooks/useWishLists'
 import { useWishItems } from '@/lib/hooks/useWishItems'
 import { useTasks } from '@/lib/hooks/useTasks'
@@ -24,27 +24,28 @@ export default function WishlistPage() {
   const [isItemFormOpen, setIsItemFormOpen] = useState(false)
   const [convertingItem, setConvertingItem] = useState<WishItem | null>(null)
 
-  // カスタムフック
+  // カスタムフック - useWishLists の返り値
   const {
-    lists,
+    wishLists,
     loading: listsLoading,
-    createList,
-    updateList,
-    deleteList,
-    reorderLists,
+    createWishList,
+    updateWishList,
+    deleteWishList,
+    reorderWishLists,
   } = useWishLists()
 
+  // カスタムフック - useWishItems の返り値
   const {
-    items,
+    wishItems,
     loading: itemsLoading,
-    createItem,
-    updateItem,
-    deleteItem,
+    createWishItem,
+    updateWishItem,
+    deleteWishItem,
     toggleComplete,
-    reorderItems,
+    reorderWishItems,
   } = useWishItems(activeListId)
 
-  const { createTask } = useTasks(new Date())
+  const { createTaskForDate } = useTasks(new Date())
 
   // マウント時の処理
   useEffect(() => {
@@ -53,19 +54,19 @@ export default function WishlistPage() {
 
   // リストが読み込まれたら最初のリストを選択
   useEffect(() => {
-    if (lists.length > 0 && !activeListId) {
+    if (wishLists.length > 0 && !activeListId) {
       // デフォルトリスト（ウィッシュリスト）を優先
-      const defaultList = lists.find(l => l.is_default)
-      setActiveListId(defaultList?.id || lists[0].id)
+      const defaultList = wishLists.find(l => l.is_default)
+      setActiveListId(defaultList?.id || wishLists[0].id)
     }
-  }, [lists, activeListId])
+  }, [wishLists, activeListId])
 
   // 現在選択中のリスト
-  const activeList = lists.find(l => l.id === activeListId)
+  const activeList = wishLists.find(l => l.id === activeListId)
   const isDefaultList = activeList?.is_default ?? false
 
   // 検索フィルタリング
-  const filteredItems = items.filter(item => {
+  const filteredItems = wishItems.filter(item => {
     if (!searchQuery.trim()) return true
     const query = searchQuery.toLowerCase()
     return (
@@ -76,22 +77,22 @@ export default function WishlistPage() {
 
   // リスト作成
   const handleCreateList = async (title: string) => {
-    await createList(title)
+    await createWishList({ title })
     setIsCreateListModalOpen(false)
   }
 
   // リスト更新
   const handleUpdateList = async (id: string, title: string) => {
-    await updateList(id, title)
+    await updateWishList(id, { title })
     setEditingList(null)
   }
 
   // リスト削除
   const handleDeleteList = async (id: string) => {
-    await deleteList(id)
+    await deleteWishList(id)
     // 削除したリストが選択中だった場合、デフォルトリストに切り替え
     if (activeListId === id) {
-      const defaultList = lists.find(l => l.is_default)
+      const defaultList = wishLists.find(l => l.is_default)
       setActiveListId(defaultList?.id || null)
     }
   }
@@ -99,7 +100,7 @@ export default function WishlistPage() {
   // アイテム作成
   const handleCreateItem = async (data: { title: string; reason: string }) => {
     if (!activeListId) return
-    await createItem({
+    await createWishItem({
       wish_list_id: activeListId,
       title: data.title,
       reason: data.reason || null,
@@ -109,7 +110,7 @@ export default function WishlistPage() {
   // アイテム更新
   const handleUpdateItem = async (data: { title: string; reason: string }) => {
     if (!editingItem) return
-    await updateItem(editingItem.id, {
+    await updateWishItem(editingItem.id, {
       title: data.title,
       reason: data.reason || null,
     })
@@ -119,7 +120,7 @@ export default function WishlistPage() {
 
   // アイテム削除
   const handleDeleteItem = async (id: string) => {
-    await deleteItem(id)
+    await deleteWishItem(id)
   }
 
   // 完了切り替え
@@ -134,10 +135,10 @@ export default function WishlistPage() {
     priority: Priority
     categoryId: string | null
   }) => {
-    const item = items.find(i => i.id === data.itemId)
+    const item = wishItems.find(i => i.id === data.itemId)
     if (!item) return
 
-    await createTask({
+    await createTaskForDate({
       title: item.title,
       task_date: data.date,
       priority: data.priority,
@@ -180,13 +181,13 @@ export default function WishlistPage() {
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         {/* Tabs */}
         <WishListTabs
-          lists={lists}
+          lists={wishLists}
           activeListId={activeListId}
           onSelectList={setActiveListId}
           onCreateList={() => setIsCreateListModalOpen(true)}
           onEditList={setEditingList}
           onDeleteList={handleDeleteList}
-          onReorderLists={reorderLists}
+          onReorderLists={reorderWishLists}
           loading={listsLoading}
         />
 
@@ -202,13 +203,13 @@ export default function WishlistPage() {
             onDeleteItem={handleDeleteItem}
             onToggleComplete={handleToggleComplete}
             onConvertToTask={setConvertingItem}
-            onReorderItems={reorderItems}
+            onReorderItems={reorderWishItems}
             loading={itemsLoading}
           />
         )}
 
         {/* Empty State - No Lists */}
-        {!listsLoading && lists.length === 0 && (
+        {!listsLoading && wishLists.length === 0 && (
           <div className="p-12 text-center">
             <p className="text-slate-500">リストがありません</p>
             <p className="text-sm text-slate-400 mt-1">
