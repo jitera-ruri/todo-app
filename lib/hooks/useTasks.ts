@@ -200,6 +200,22 @@ export function useTasks(date: string) {
     return true
   }, [supabase])
 
+  // 未完了タスクを今日に繰り越す関数
+  const carryOverIncompleteTasks = useCallback(async (): Promise<number> => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return 0
+
+    const { data, error } = await supabase
+      .rpc('carry_over_incomplete_tasks', { target_user_id: user.id })
+
+    if (error) {
+      console.error('Error carrying over tasks:', error)
+      return 0
+    }
+
+    return data || 0
+  }, [supabase])
+
   return {
     tasks,
     loading,
@@ -210,5 +226,6 @@ export function useTasks(date: string) {
     reorderTasks,
     moveToDate,
     refetch: fetchTasks,
+    carryOverIncompleteTasks,
   }
 }
